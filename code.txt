@@ -1,0 +1,365 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   cycle.c                                            :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/03/17 23:15:27 by michel            #+#    #+#             */
+/*   Updated: 2025/03/17 23:39:37 by michel           ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher.h"
+
+void    take_forks(t_data *data, int idx)
+{
+    pthread_mutex_lock(&data->mutex[idx]);
+    pthread_mutex_lock(&data->print);
+    printf("%ld %ld has taken a fork\n", get_timestamp(), data->philo[idx].id);
+    pthread_mutex_unlock(&data->print);
+    pthread_mutex_lock(&data->mutex[(idx + 1) % data->number_philo]);
+    pthread_mutex_lock(&data->print);
+    printf("%ld %ld has taken a fork\n", get_timestamp(), data->philo[idx].id);
+    pthread_mutex_unlock(&data->print);
+}
+
+void    eat(t_data *data, int idx)
+{
+    pthread_mutex_lock(&data->print);
+    printf("%ld %ld is eating\n", get_timestamp(), data->philo[idx].id);
+    pthread_mutex_unlock(&data->print);
+    data->philo[idx].last_meal_time = get_timestamp();
+    ft_sleep(data->philo[idx].time_for_eat);
+    data->philo[idx].eat_count++;
+}
+
+void sleep_and_think(t_data *data, int idx)
+{
+    pthread_mutex_lock(&data->print);
+    printf("%ld %ld is sleeping\n", get_timestamp(), data->philo[idx].id);
+    pthread_mutex_unlock(&data->print);
+    ft_sleep(data->philo[idx].time_for_sleep);
+    pthread_mutex_lock(&data->print);
+    printf("%ld %ld is thinking\n", get_timestamp(), data->philo[idx].id);
+    pthread_mutex_unlock(&data->print);
+}
+
+void *monitor_routine(void *arg)
+{
+    t_data *data;
+    int i;
+
+    data = (t_data *)arg;
+    while (1)
+    {
+        i = 0;
+        while (i < data->number_philo)
+        {
+            if ((get_timestamp() - data->philo[i].last_meal_time) >
+                data->philo[i].time_for_die)
+            {
+                pthread_mutex_lock(&data->print);
+                printf("%ld %ld died\n", get_timestamp(), data->philo[i].id);
+                pthread_mutex_unlock(&data->print);
+                exit(0);
+            }
+            i++;
+        }
+        usleep(1000);  // vérifie toutes les 1ms
+    }
+    return (NULL);
+}
+
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   init.c                                             :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/03/17 16:17:00 by michel            #+#    #+#             */
+/*   Updated: 2025/03/17 23:50:48 by michel           ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher.h"
+
+int init_print_mutex(t_data *data)
+{
+    if (pthread_mutex_init(&data->print, NULL) != 0)
+        return (1);
+    return (0);
+}
+
+int init_mutex(t_data *data)
+{
+    int i;
+    
+    i = 0;
+    while (i < data->number_philo)
+    {
+        if (pthread_mutex_init(&data->mutex[i], NULL) != 0)
+            return (i + 1);
+        i++;
+    }
+    return (0);
+}
+
+void init_philo(t_data *data, int *times)
+{
+    int i;
+    
+    i = 0;
+    while (i < data->number_philo)
+    {
+        data->philo[i].id = i + 1;
+        data->philo[i].time_for_die = times[0];
+        data->philo[i].time_for_eat = times[1];
+        data->philo[i].time_for_sleep = times[2];
+        data->philo[i].time_for_think = times[3];
+        data->philo[i].eat_count = 0;
+        data->philo[i].last_meal_time = get_timestamp();
+        i++;
+    }
+}
+
+t_data *init_data(int nb_philo, int *times)
+{
+    t_data *data;
+    int err;
+
+    data = allocate_data(nb_philo);
+    if (!data)
+        return (NULL);
+    if (init_print_mutex(data))
+    {
+        free(data->mutex);
+        free(data->philo);
+        free(data);
+        return (NULL);
+    }
+    err = init_mutex(data);
+    if (err)
+        return (clean_data(data, err));
+    init_philo(data, times);
+    return (data);
+}/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   phylosopher.c                                      :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/03/17 13:50:27 by michel            #+#    #+#             */
+/*   Updated: 2025/03/17 23:47:25 by michel           ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher.h"
+
+
+void    *routine_threads(void *arg)
+{
+    t_philo_arg *p_arg;
+    t_data      *data;
+    int         idx;
+
+    p_arg = (t_philo_arg *)arg;
+    data = p_arg->data;
+    idx = p_arg->index;
+    while (1)
+    {
+        take_forks(data, idx);
+        eat(data, idx);
+        release_forks(data, idx);
+        sleep_and_think(data, idx);
+    }
+    return (NULL);
+}
+
+int main(int argc, char **argv)
+{
+    int         nb_philo;
+    int         times[4];
+    int         i;
+    t_data      *data;
+    pthread_t   *threads;
+    pthread_t   monitor;
+    t_philo_arg *args;
+
+    (void)argc;
+    (void)argv;
+    nb_philo = 5;
+    times[0] = 800;  // time_for_die
+    times[1] = 200;  // time_for_eat
+    times[2] = 200;  // time_for_sleep
+    times[3] = 100;  // time_for_think
+
+    data = init_data(nb_philo, times);
+    if (!data)
+        return (EXIT_FAILURE);
+    threads = malloc(sizeof(pthread_t) * nb_philo);
+    if (!threads)
+        return (EXIT_FAILURE);
+    args = malloc(sizeof(t_philo_arg) * nb_philo);
+    if (!args)
+    {
+        free(threads);
+        return (EXIT_FAILURE);
+    }
+    i = 0;
+    while (i < nb_philo)
+    {
+        args[i].index = i;
+        args[i].data = data;
+        if (pthread_create(&threads[i], NULL, routine_threads, &args[i]) != 0)
+        {
+            perror("Erreur lors de la création du thread");
+            return (EXIT_FAILURE);
+        }
+        i++;
+    }
+    if (pthread_create(&monitor, NULL, monitor_routine, data) != 0)
+    {
+        perror("Erreur lors de la création du thread de surveillance");
+        return (EXIT_FAILURE);
+    }
+    i = 0;
+    while (i < nb_philo)
+    {
+        pthread_join(threads[i], NULL);
+        i++;
+    }
+    free(threads);
+    free(args);
+    clean_data(data, nb_philo);
+    return (0);
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   utils.c                                            :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/03/17 15:51:17 by michel            #+#    #+#             */
+/*   Updated: 2025/03/17 23:30:06 by michel           ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher.h"
+#include <bits/types/struct_timeval.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+t_data *allocate_data(int nb_philo)
+{
+    t_data *data;
+
+    data = malloc(sizeof(t_data));
+    if (!data)
+        return (NULL);
+    data->number_philo = nb_philo;
+    data->philo = malloc(sizeof(t_philo) * nb_philo);
+    if (!data->philo)
+    {
+        free(data);
+        return (NULL);
+    }
+    data->mutex = malloc(sizeof(pthread_mutex_t) * nb_philo);
+    if (!data->mutex)
+    {
+        free(data->philo);
+        free(data);
+        return (NULL);
+    }
+    return (data);
+}
+
+t_data *clean_data(t_data *data, int err)
+{
+    int i;
+    
+    i = 0;
+    while (i < err -1)
+    {
+        pthread_mutex_destroy(&data->mutex[i]);
+        i++;
+    }
+    pthread_mutex_destroy(&data->print);
+    free(data->mutex);
+    free(data->philo);
+    free(data);
+    return (NULL);
+}
+
+long    get_timestamp(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000L + tv.tv_usec / 1000L);
+}
+
+void    ft_sleep(int ms)
+{
+    long    start;
+    
+    start = get_timestamp();
+    while (get_timestamp() - start < ms)
+        usleep(100);
+}
+
+void release_forks(t_data *data, int idx)
+{
+    pthread_mutex_unlock(&data->mutex[idx]);
+    pthread_mutex_unlock(&data->mutex[(idx + 1) % data->number_philo]);
+}
+#ifndef PHYLOSOPHER_H
+#define PHYLOSOPHER_H
+
+# include <pthread.h>
+# include <stdio.h>
+# include <stdlib.h>
+# include <unistd.h>
+# include <sys/time.h>
+
+typedef struct s_philo
+{
+    long    id;
+    int     time_for_eat;
+    int     time_for_die;
+    int     time_for_think;
+    int     time_for_sleep;
+    int     eat_count;
+    int     last_meal_time;
+} t_philo;
+
+typedef struct s_data
+{
+    int     number_philo;
+    pthread_mutex_t *mutex;
+    pthread_mutex_t print;
+    t_philo     *philo;
+} t_data;
+
+typedef struct s_philo_arg
+{
+    int index;
+    t_data  *data;
+} t_philo_arg;
+
+t_data *allocate_data(int nb_philo);
+t_data *clean_data(t_data *data, int err);
+int init_print_mutex(t_data *data);
+int init_mutex(t_data *data);
+void init_philo(t_data *data, int *times);
+t_data *init_data(int nb_philo, int *times);
+long    get_timestamp(void);
+void    ft_sleep(int ms);
+void release_forks(t_data *data, int idx);
+void    take_forks(t_data *data, int idx);
+void    eat(t_data *data, int idx);
+void sleep_and_think(t_data *data, int idx);
+void *monitor_routine(void *arg);
+#endif
