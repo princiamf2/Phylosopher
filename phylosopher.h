@@ -7,43 +7,48 @@
 # include <unistd.h>
 # include <sys/time.h>
 
+typedef struct s_args
+{
+    int     nb_philo;
+    long    time_to_die;
+    long    time_to_eat;
+    long    time_to_sleep;
+    int     meals_required;
+}   t_args;
+
 typedef struct s_philo
 {
-    long    id;
-    int     time_for_eat;
-    int     time_for_die;
-    int     time_for_think;
-    int     time_for_sleep;
-    int     eat_count;
-    int     last_meal_time;
-    int     total_eat;
+    int             id;
+    long            last_meal;
+    int             eats;
+    int             *stop;
+    pthread_mutex_t meal_mutex;
+    pthread_mutex_t *left_fork;
+    pthread_mutex_t *right_fork;
+    pthread_mutex_t *print_mutex;
+    t_args          *args;
 } t_philo;
 
 typedef struct s_data
 {
-    int     number_philo;
-    pthread_mutex_t *mutex;
-    pthread_mutex_t print;
-    t_philo     *philo;
+    t_args  args;
+    pthread_mutex_t *forks;
+    pthread_mutex_t print_mutex;
+    pthread_t       *threads;
+    pthread_t       monitor;
+    t_philo         *philos;
+    int             stop;
 } t_data;
 
-typedef struct s_philo_arg
-{
-    int index;
-    t_data  *data;
-} t_philo_arg;
+long	get_timestamp(void);
+void	ft_sleep(long ms);
+void	safe_log(t_philo *ph, const char *msg);
+int		init_data(t_data *data, int argc, char **argv);
+void	cleanup_data(t_data *data);
+void	*philo_routine(void *arg);
+void	*monitor_routine(void *arg);
+void	eat_action(t_philo *ph);
+void	sleep_action(t_philo *ph);
+void	think_action(t_philo *ph);
 
-t_data *allocate_data(int nb_philo);
-t_data *clean_data(t_data *data, int err);
-int init_print_mutex(t_data *data);
-int init_mutex(t_data *data);
-void init_philo(t_data *data, int *times);
-t_data *init_data(int nb_philo, int *times);
-long    get_timestamp(void);
-void    ft_sleep(int ms);
-void release_forks(t_data *data, int idx);
-void    take_forks(t_data *data, int idx);
-void    eat(t_data *data, int idx);
-void sleep_and_think(t_data *data, int idx);
-void *monitor_routine(void *arg);
 #endif

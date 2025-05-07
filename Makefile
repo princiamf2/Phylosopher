@@ -1,6 +1,6 @@
 NAME = phylosopher
 CC = gcc
-SRC = init.c phylosopher.c utils.c cycle.c
+SRC = init.c routine.c utils.c cycle.c main.c
 CFLG = -Wall -Werror -Wextra
 OBJ_DIR = obj
 OBJ = $(addprefix $(OBJ_DIR)/, $(SRC:.c=.o))
