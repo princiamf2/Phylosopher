@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   routine.c                                          :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/05/07 17:12:31 by michel            #+#    #+#             */
-/*   Updated: 2025/05/07 18:20:29 by michel           ###   ########.fr       */
+/*   Updated: 2025/06/04 15:33:12 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -32,11 +32,15 @@ void	*philo_routine(void *arg)
 
 int	check_death(t_data *data, int i)
 {
+	long	now;
+
 	pthread_mutex_lock(&data->philos[i].meal_mutex);
-	if (get_timestamp() - data->philos[i].last_meal > data->args.time_to_die)
+	now = get_timestamp();
+	if (now - data->philos[i].last_meal > data->args.time_to_die)
 	{
 		safe_log(&data->philos[i], "died");
-		exit(0);
+		pthread_mutex_unlock(&data->philos[i].meal_mutex);
+		return (1);
 	}
 	pthread_mutex_unlock(&data->philos[i].meal_mutex);
 	return (0);

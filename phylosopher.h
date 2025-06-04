@@ -27,6 +27,7 @@ typedef struct s_philo
     pthread_mutex_t *right_fork;
     pthread_mutex_t *print_mutex;
     t_args          *args;
+    long            *start_time;
 } t_philo;
 
 typedef struct s_data
@@ -38,6 +39,7 @@ typedef struct s_data
     pthread_t       monitor;
     t_philo         *philos;
     int             stop;
+    long            start_time;
 } t_data;
 
 long	get_timestamp(void);
