@@ -6,7 +6,7 @@
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/05/07 17:12:31 by michel            #+#    #+#             */
-/*   Updated: 2025/06/04 15:33:12 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/06/23 14:31:46 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,16 +14,15 @@
 
 void	*philo_routine(void *arg)
 {
-	t_philo *ph;
+	t_philo	*ph;
 
 	ph = (t_philo *)arg;
-	if (ph->id % 2 == 0)
-		ft_sleep(ph->args->time_to_eat / 10);
-	while (!*(ph->stop))
+	while (!ph->stop)
 	{
 		eat_action(ph);
-		if (ph->args->meals_required > 0 && ph->eats >= ph->args->meals_required)
-			break;
+		if (ph->stop || (ph->args->meals_required > 0
+				&& ph->eats >= ph->args->meals_required))
+			break ;
 		sleep_action(ph);
 		think_action(ph);
 	}
@@ -37,11 +36,7 @@ int	check_death(t_data *data, int i)
 	pthread_mutex_lock(&data->philos[i].meal_mutex);
 	now = get_timestamp();
 	if (now - data->philos[i].last_meal > data->args.time_to_die)
-	{
-		safe_log(&data->philos[i], "died");
-		pthread_mutex_unlock(&data->philos[i].meal_mutex);
 		return (1);
-	}
 	pthread_mutex_unlock(&data->philos[i].meal_mutex);
 	return (0);
 }
@@ -49,37 +44,49 @@ int	check_death(t_data *data, int i)
 int	check_finished(t_data *data, int i, int *finished)
 {
 	pthread_mutex_lock(&data->philos[i].meal_mutex);
-	if (data->args.meals_required > 0 \
-	&& data->philos[i].eats >= data->args.meals_required)
+	if (data->args.meals_required > 0
+		&& data->philos[i].eats >= data->args.meals_required)
 		(*finished)++;
 	pthread_mutex_unlock(&data->philos[i].meal_mutex);
 	return (0);
 }
 
+static int	monitor_cycle(t_data *data)
+{
+	int		done;
+	int		i;
+	t_philo	*ph;
+
+	done = 0;
+	i = 0;
+	while (i < data->args.nb_philo)
+	{
+		ph = &data->philos[i];
+		pthread_mutex_lock(&ph->meal_mutex);
+		if (get_timestamp() - ph->last_meal > data->args.time_to_die)
+		{
+			safe_log(ph, "died");
+			data->stop = 1;
+			pthread_mutex_unlock(&ph->meal_mutex);
+			return (1);
+		}
+		if (data->stop)
+			return (0);
+		pthread_mutex_unlock(&ph->meal_mutex);
+		check_finished(data, i, &done);
+		i++;
+	}
+	if (data->args.meals_required > 0 && done == data->args.nb_philo)
+		data->stop = 1;
+	return (data->stop);
+}
+
 void	*monitor_routine(void *arg)
 {
-	t_data *data;
-	int	 finished;
-	int	 i;
+	t_data	*data;
 
-	data = (t_data *)arg;
-	while (!data->stop)
-	{
-		finished = 0;
-		i = 0;
-		while (i < data->args.nb_philo)
-		{
-			if (check_death(data, i))
-				return (NULL);
-			check_finished(data, i, &finished);
-			i++;
-		}
-		if (data->args.meals_required > 0 && finished == data->args.nb_philo)
-		{
-			data->stop = 1;
-			return (NULL);
-		}
+	data = arg;
+	while (!data->stop && !monitor_cycle(data))
 		usleep(1000);
-	}
 	return (NULL);
 }
