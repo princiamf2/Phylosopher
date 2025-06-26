@@ -6,7 +6,7 @@
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/03/17 16:17:00 by michel            #+#    #+#             */
-/*   Updated: 2025/06/23 12:05:23 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/06/24 13:58:38 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -23,7 +23,7 @@ static void	init_philos(t_data *data)
 		ph = &data->philos[i];
 		ph->id = i + 1;
 		ph->args = &data->args;
-		ph->stop = data->stop;
+		ph->data = data;
 		ph->left_fork = &data->forks[i];
 		ph->right_fork = &data->forks[(i + 1) % data->args.nb_philo];
 		ph->print_mutex = &data->print_mutex;

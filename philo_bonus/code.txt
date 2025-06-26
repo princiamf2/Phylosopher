@@ -1,0 +1,384 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   main.c                                             :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/06/24 19:10:02 by mm-furi           #+#    #+#             */
+/*   Updated: 2025/06/26 18:04:46 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher_bonus.h"
+
+int	init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
+{
+	int	argc_ok;
+
+	if (ac < 5 || ac > 6)
+	{
+		fprintf(stderr,
+				"Usage: %s nb_philo time_to_die time_to_eat "
+				"time_to_sleep [meals_required]",
+				av[0]);
+		return (EXIT_FAILURE);
+	}
+	argc_ok = (ac >= 5 && ac <= 6);
+	if (!argc_ok)
+		return (EXIT_FAILURE);
+	data->args.nb_philo = ft_atoi(av[1]);
+	data->args.time_to_die = ft_atoi(av[2]);
+	data->args.time_to_eat = ft_atoi(av[3]);
+	data->args.time_to_sleep = ft_atoi(av[4]);
+	if (ac == 6)
+		data->args.meals_required = ft_atoi(av[5]);
+	else
+		data->args.meals_required = -1;
+	*pids = malloc(sizeof(pid_t) * data->args.nb_philo);
+	data->pids = *pids;
+	if (!*pids)
+		return (EXIT_FAILURE);
+	open_semaphores(data, data->args.nb_philo);
+	data->start_time = get_timestamp();
+	return (EXIT_SUCCESS);
+}
+
+void	spawn_philo(t_data2 *data, pid_t *pids)
+{
+	int	i;
+
+	i = 0;
+	while (i < data->args.nb_philo)
+	{
+		pids[i] = fork();
+		if (pids[i] < 0)
+			perror("fork");
+		if (pids[i] == 0)
+			routine_philo(data, i + 1);
+		i++;
+	}
+}
+
+void	cleanup_and_wait(t_data2 *data, pid_t *pids)
+{
+	int		i;
+	int		status;
+	int		finished;
+	pid_t	pid;
+
+	finished = 0;
+	while ((pid = waitpid(-1, &status, 0)) > 0)
+	{
+		if (WEXITSTATUS(status))
+		{
+			if (WEXITSTATUS(status) == EXIT_FAILURE)
+				break;
+			else if (WEXITSTATUS(status) == EXIT_SUCCESS)
+			{
+				finished++;
+				if (finished == data->args.nb_philo)
+					break;
+			}
+		}
+		else
+			break ;
+	}
+	i = 0;
+	while (i < data->args.nb_philo)
+	{
+		kill(pids[i], SIGKILL);
+		i++;
+	}
+	i = 0;
+	while (i < data->args.nb_philo)
+	{
+		waitpid(pids[i], NULL, 0);
+		i++;
+	}
+	close_semaphores(data);
+	free(pids);
+}
+
+int	main(int ac, char **av)
+{
+	t_data2	data;
+	pid_t	*pids;
+
+	if (init_data2(&data, &pids, ac, av) == EXIT_FAILURE)
+		return (1);
+	spawn_philo(&data, pids);
+	cleanup_and_wait(&data, pids);
+	return (EXIT_SUCCESS);
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   phylosopher.c                                      :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/06/24 19:09:19 by mm-furi           #+#    #+#             */
+/*   Updated: 2025/06/26 18:15:00 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher_bonus.h"
+
+int	eat_and_check(t_data2 *data, int id, long *last_meal, int *meals)
+{
+	t_args2	*args;
+
+	args = &data->args;
+	safe_print(data, id, "is eating");
+	usleep(args->time_to_eat * 1000);
+	*last_meal = get_timestamp();
+	(*meals)++;
+	if (args->meals_required > 0 && *meals >= args->meals_required)
+	{
+		drop_forks(data);
+		exit(EXIT_SUCCESS);
+	}
+	return (1);
+}
+
+void	do_sleep_and_think(t_data2 *data, int id)
+{
+	t_args2	*args;
+
+	args = &data->args;
+	safe_print(data, id, "is sleeping");
+	usleep(args->time_to_sleep * 1000);
+	safe_print(data, id, "is thinking");
+}
+
+void	routine_philo(t_data2 *data, int id)
+{
+	long		last_meal;
+	int			meals;
+	t_args2		*args;
+	pthread_t	watcher;
+	t_monitor	*moni;
+
+	args = &data->args;
+	last_meal = get_timestamp();
+	meals = 0;
+	moni = malloc(sizeof(*moni));
+	moni->data = data;
+	moni->id = id;
+	moni->last_meal = &last_meal;
+	if (pthread_create(&watcher, NULL, death_monitor, moni) != 0)
+		perror("pthread_create");
+	pthread_detach(watcher);
+	if (id % 2 == 1)
+		usleep(data->args.time_to_eat * 1000);
+	while (1)
+	{
+		take_forks(data);
+		safe_print(data, id, "has taken a fork");
+		safe_print(data, id, "has taken a fork");
+		eat_and_check(data, id, &last_meal, &meals);
+		drop_forks(data);
+		safe_print(data, id, "is sleeping");
+		usleep(args->time_to_sleep * 1000);
+		safe_print(data, id, "is thinking");
+	}
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   sem_helper.c                                       :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/06/24 19:08:58 by mm-furi           #+#    #+#             */
+/*   Updated: 2025/06/26 18:00:52 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher_bonus.h"
+
+sem_t	*open_semaphores(t_data2 *data, int n)
+{
+	sem_unlink("/forks");
+	sem_unlink("/print");
+	sem_unlink("/philo_death");
+	data->forks = sem_open("/forks", O_CREAT | O_EXCL, 0644, n);
+	data->print = sem_open("/print", O_CREAT | O_EXCL, 0644, 1);
+	data->death_sem = sem_open("/philo_death", O_CREAT | O_EXCL, 0644, 1);
+	if (data->forks == SEM_FAILED || data->print == SEM_FAILED
+		|| data->death_sem == SEM_FAILED)
+	{
+		perror("sem_open");
+		exit(EXIT_FAILURE);
+	}
+	return (data->forks);
+}
+
+void	close_semaphores(t_data2 *data)
+{
+	sem_close(data->forks);
+	sem_unlink("/philo_forks");
+	sem_close(data->print);
+	sem_unlink("/philo_writing");
+	sem_close(data->death_sem);
+	sem_unlink("/philo_death");
+}
+
+void	drop_forks(t_data2 *data)
+{
+	sem_post(data->forks);
+	sem_post(data->forks);
+}
+
+void	take_forks(t_data2 *data)
+{
+	sem_wait(data->forks);
+	sem_wait(data->forks);
+}
+
+void	*death_monitor(void *arg)
+{
+	t_monitor	*moni;
+	t_args2		*args;
+
+	// int	i;
+	moni = arg;
+	args = &moni->data->args;
+	while (1)
+	{
+		if (get_timestamp() - *(moni->last_meal) > args->time_to_die)
+		{
+			// i = 0;
+			// while (i < args->nb_philo)
+			// {
+			// 	if (moni->data->pids[i] != getpid())
+			// 		kill(moni->data->pids[i], SIGTERM);
+			// 	i++;
+			// }
+			sem_wait(moni->data->death_sem);
+			safe_print(moni->data, moni->id, "died");
+			free(moni);
+			exit(EXIT_FAILURE);
+		}
+		usleep(1000);
+	}
+	return (NULL);
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   utils.c                                            :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/06/24 19:10:09 by mm-furi           #+#    #+#             */
+/*   Updated: 2025/06/26 15:47:28 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher_bonus.h"
+
+long	get_timestamp(void)
+{
+	struct timeval	tv;
+
+	gettimeofday(&tv, NULL);
+	return (tv.tv_sec * 1000L + tv.tv_usec / 1000L);
+}
+
+void	safe_print(t_data2 *data, int id, const char *msg)
+{
+	long	now;
+
+	sem_wait(data->print);
+	now = get_timestamp() - data->start_time;
+	printf("%ld %d %s\n", now, id, msg);
+	sem_post(data->print);
+}
+
+int	ft_atoi(const char *s)
+{
+	int		i;
+	long	ret;
+	int		sign;
+
+	i = 0;
+	ret = 0;
+	sign = 1;
+	while (s[i] == ' ' || (s[i] >= 9 && s[i] <= 13))
+		i++;
+	if (s[i] == '-' || s[i] == '+')
+	{
+		if (s[i] == '-')
+			sign = -1;
+		i++;
+	}
+	while (s[i] >= '0' && s[i] <= '9')
+	{
+		ret = ret * 10 + (s[i] - '0');
+		i++;
+	}
+	return ((int)ret * sign);
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   phylosopher_bonus.h                                :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/06/24 18:58:39 by mm-furi           #+#    #+#             */
+/*   Updated: 2025/06/26 17:51:35 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#ifndef PHYLOSOPHER_BONUS_H
+# define PHYLOSOPHER_BONUS_H
+
+# include "../phylosopher.h"
+# include <fcntl.h>
+# include <semaphore.h>
+# include <signal.h>
+# include <stdio.h>
+# include <stdlib.h>
+# include <sys/time.h>
+# include <sys/wait.h>
+# include <unistd.h>
+
+typedef struct s_args2
+{
+	int		nb_philo;
+	long	time_to_die;
+	long	time_to_eat;
+	long	time_to_sleep;
+	int		meals_required;
+}			t_args2;
+
+typedef struct s_data2
+{
+	t_args2	args;
+	long	start_time;
+	sem_t	*forks;
+	sem_t	*print;
+	sem_t	*death_sem;
+	pid_t	*pids;
+}			t_data2;
+
+typedef struct s_monitor
+{
+	t_data2	*data;
+	int		id;
+	long	*last_meal;
+}			t_monitor;
+
+sem_t		*open_semaphores(t_data2 *data, int n);
+void		close_semaphores(t_data2 *data);
+long		get_timestamp(void);
+void		safe_print(t_data2 *data, int id, const char *msg);
+void		drop_forks(t_data2 *data);
+void		take_forks(t_data2 *data);
+void		routine_philo(t_data2 *data, int id);
+void		*death_monitor(void *arg);
+
+#endif
