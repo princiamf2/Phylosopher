@@ -6,7 +6,7 @@
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:08:58 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 18:00:52 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:26:32 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -56,20 +56,12 @@ void	*death_monitor(void *arg)
 	t_monitor	*moni;
 	t_args2		*args;
 
-	// int	i;
 	moni = arg;
 	args = &moni->data->args;
 	while (1)
 	{
 		if (get_timestamp() - *(moni->last_meal) > args->time_to_die)
 		{
-			// i = 0;
-			// while (i < args->nb_philo)
-			// {
-			// 	if (moni->data->pids[i] != getpid())
-			// 		kill(moni->data->pids[i], SIGTERM);
-			// 	i++;
-			// }
 			sem_wait(moni->data->death_sem);
 			safe_print(moni->data, moni->id, "died");
 			free(moni);

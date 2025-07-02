@@ -6,7 +6,7 @@
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:10:02 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 18:04:46 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:16:50 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -18,10 +18,11 @@ int	init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
 
 	if (ac < 5 || ac > 6)
 	{
-		fprintf(stderr,
-				"Usage: %s nb_philo time_to_die time_to_eat "
-				"time_to_sleep [meals_required]",
-				av[0]);
+		fprintf(
+			stderr,
+			"Usage: %s nb_philo time_to_die time_to_eat "
+			"time_to_sleep [meals_required]",
+			av[0]);
 		return (EXIT_FAILURE);
 	}
 	argc_ok = (ac >= 5 && ac <= 6);
@@ -73,12 +74,12 @@ void	cleanup_and_wait(t_data2 *data, pid_t *pids)
 		if (WEXITSTATUS(status))
 		{
 			if (WEXITSTATUS(status) == EXIT_FAILURE)
-				break;
+				break ;
 			else if (WEXITSTATUS(status) == EXIT_SUCCESS)
 			{
 				finished++;
 				if (finished == data->args.nb_philo)
-					break;
+					break ;
 			}
 		}
 		else
