@@ -3,26 +3,25 @@
 /*                                                        :::      ::::::::   */
 /*   main.c                                             :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:10:02 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/07/02 15:40:56 by michel           ###   ########.fr       */
+/*   Updated: 2025/07/02 15:55:11 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "phylosopher_bonus.h"
 
-int init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
+int	init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
 {
-    if (check_argc(ac, av) < 0)
-        return (EXIT_FAILURE);
-    if (parse_args(data, ac, av) < 0)
-        return (EXIT_FAILURE);
-    if (setup_resources(data, pids) < 0)
-        return (EXIT_FAILURE);
-
-    data->start_time = get_timestamp();
-    return (EXIT_SUCCESS);
+	if (check_argc(ac, av) < 0)
+		return (EXIT_FAILURE);
+	if (parse_args(data, ac, av) < 0)
+		return (EXIT_FAILURE);
+	if (setup_resources(data, pids) < 0)
+		return (EXIT_FAILURE);
+	data->start_time = get_timestamp();
+	return (EXIT_SUCCESS);
 }
 
 void	spawn_philo(t_data2 *data, pid_t *pids)
@@ -70,40 +69,12 @@ static int	wait_for_children(t_data2 *data)
 
 void	cleanup_and_wait(t_data2 *data, pid_t *pids)
 {
-	int		i;
-	int		status;
-	int		finished;
-	pid_t	pid;
+	int	result;
 
-	finished = 0;
-	while ((pid = waitpid(-1, &status, 0)) > 0)
-	{
-		if (WEXITSTATUS(status))
-		{
-			if (WEXITSTATUS(status) == EXIT_FAILURE)
-				break ;
-			else if (WEXITSTATUS(status) == EXIT_SUCCESS)
-			{
-				finished++;
-				if (finished == data->args.nb_philo)
-					break ;
-			}
-		}
-		else
-			break ;
-	}
-	i = 0;
-	while (i < data->args.nb_philo)
-	{
-		kill(pids[i], SIGKILL);
-		i++;
-	}
-	i = 0;
-	while (i < data->args.nb_philo)
-	{
-		waitpid(pids[i], NULL, 0);
-		i++;
-	}
+	result = wait_for_children(data);
+	(void)result;
+	kill_all(pids, data->args.nb_philo);
+	wait_all(pids, data->args.nb_philo);
 	close_semaphores(data);
 	free(pids);
 }

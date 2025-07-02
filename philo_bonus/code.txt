@@ -6,7 +6,7 @@
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:10:02 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 18:04:46 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:55:11 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,32 +14,12 @@
 
 int	init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
 {
-	int	argc_ok;
-
-	if (ac < 5 || ac > 6)
-	{
-		fprintf(stderr,
-				"Usage: %s nb_philo time_to_die time_to_eat "
-				"time_to_sleep [meals_required]",
-				av[0]);
+	if (check_argc(ac, av) < 0)
 		return (EXIT_FAILURE);
-	}
-	argc_ok = (ac >= 5 && ac <= 6);
-	if (!argc_ok)
+	if (parse_args(data, ac, av) < 0)
 		return (EXIT_FAILURE);
-	data->args.nb_philo = ft_atoi(av[1]);
-	data->args.time_to_die = ft_atoi(av[2]);
-	data->args.time_to_eat = ft_atoi(av[3]);
-	data->args.time_to_sleep = ft_atoi(av[4]);
-	if (ac == 6)
-		data->args.meals_required = ft_atoi(av[5]);
-	else
-		data->args.meals_required = -1;
-	*pids = malloc(sizeof(pid_t) * data->args.nb_philo);
-	data->pids = *pids;
-	if (!*pids)
+	if (setup_resources(data, pids) < 0)
 		return (EXIT_FAILURE);
-	open_semaphores(data, data->args.nb_philo);
 	data->start_time = get_timestamp();
 	return (EXIT_SUCCESS);
 }
@@ -60,42 +40,41 @@ void	spawn_philo(t_data2 *data, pid_t *pids)
 	}
 }
 
-void	cleanup_and_wait(t_data2 *data, pid_t *pids)
+static int	wait_for_children(t_data2 *data)
 {
-	int		i;
 	int		status;
 	int		finished;
 	pid_t	pid;
 
 	finished = 0;
-	while ((pid = waitpid(-1, &status, 0)) > 0)
+	pid = waitpid(-1, &status, 0);
+	while (pid > 0)
 	{
-		if (WEXITSTATUS(status))
+		if (WIFEXITED(status) == 0)
+			return (0);
+		if (WEXITSTATUS(status) == EXIT_FAILURE)
+			return (1);
+		if (WEXITSTATUS(status) == EXIT_SUCCESS)
 		{
-			if (WEXITSTATUS(status) == EXIT_FAILURE)
-				break;
-			else if (WEXITSTATUS(status) == EXIT_SUCCESS)
-			{
-				finished++;
-				if (finished == data->args.nb_philo)
-					break;
-			}
+			finished++;
+			if (finished == data->args.nb_philo)
+				return (2);
 		}
 		else
-			break ;
+			return (0);
+		pid = waitpid(-1, &status, 0);
 	}
-	i = 0;
-	while (i < data->args.nb_philo)
-	{
-		kill(pids[i], SIGKILL);
-		i++;
-	}
-	i = 0;
-	while (i < data->args.nb_philo)
-	{
-		waitpid(pids[i], NULL, 0);
-		i++;
-	}
+	return (0);
+}
+
+void	cleanup_and_wait(t_data2 *data, pid_t *pids)
+{
+	int	result;
+
+	result = wait_for_children(data);
+	(void)result;
+	kill_all(pids, data->args.nb_philo);
+	wait_all(pids, data->args.nb_philo);
 	close_semaphores(data);
 	free(pids);
 }
@@ -116,10 +95,10 @@ int	main(int ac, char **av)
 /*                                                        :::      ::::::::   */
 /*   phylosopher.c                                      :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:09:19 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/07/02 14:10:17 by michel           ###   ########.fr       */
+/*   Updated: 2025/07/02 15:15:32 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -153,41 +132,56 @@ void	do_sleep_and_think(t_data2 *data, int id)
 	safe_print(data, id, "is thinking");
 }
 
-void	routine_philo(t_data2 *data, int id)
+static void	philo_init(t_data2 *data, int id, long *last_meal, int *meals)
 {
-	long		last_meal;
-	int			meals;
-	t_args2		*args;
-	pthread_t	watcher;
 	t_monitor	*moni;
+	pthread_t	watcher;
 
-	args = &data->args;
-	last_meal = get_timestamp();
-	meals = 0;
+	*last_meal = get_timestamp();
+	*meals = 0;
 	moni = malloc(sizeof(*moni));
+	if (!moni)
+	{
+		perror("malloc");
+		return ;
+	}
 	moni->data = data;
 	moni->id = id;
-	moni->last_meal = &last_meal;
+	moni->last_meal = last_meal;
 	if (pthread_create(&watcher, NULL, death_monitor, moni) != 0)
 		perror("pthread_create");
 	pthread_detach(watcher);
 	if (id % 2 == 1)
 		usleep(data->args.time_to_eat * 1000);
 	else
-	{
 		usleep(data->args.time_to_sleep * 1000);
-	}
+}
+
+static void	philo_loop(t_data2 *data, int id, long *last_meal, int *meals)
+{
+	t_args2	*args;
+
+	args = &data->args;
 	while (1)
 	{
 		take_forks(data);
 		safe_print(data, id, "has taken a fork");
 		safe_print(data, id, "has taken a fork");
-		eat_and_check(data, id, &last_meal, &meals);
+		eat_and_check(data, id, last_meal, meals);
 		drop_forks(data);
 		safe_print(data, id, "is sleeping");
 		usleep(args->time_to_sleep * 1000);
 		safe_print(data, id, "is thinking");
 	}
+}
+
+void	routine_philo(t_data2 *data, int id)
+{
+	long	last_meal;
+	int		meals;
+
+	philo_init(data, id, &last_meal, &meals);
+	philo_loop(data, id, &last_meal, &meals);
 }
 /* ************************************************************************** */
 /*                                                                            */
@@ -197,7 +191,7 @@ void	routine_philo(t_data2 *data, int id)
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:08:58 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 18:00:52 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:26:32 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -247,20 +241,12 @@ void	*death_monitor(void *arg)
 	t_monitor	*moni;
 	t_args2		*args;
 
-	// int	i;
 	moni = arg;
 	args = &moni->data->args;
 	while (1)
 	{
 		if (get_timestamp() - *(moni->last_meal) > args->time_to_die)
 		{
-			// i = 0;
-			// while (i < args->nb_philo)
-			// {
-			// 	if (moni->data->pids[i] != getpid())
-			// 		kill(moni->data->pids[i], SIGTERM);
-			// 	i++;
-			// }
 			sem_wait(moni->data->death_sem);
 			safe_print(moni->data, moni->id, "died");
 			free(moni);
@@ -329,12 +315,96 @@ int	ft_atoi(const char *s)
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
+/*   utils_main.c                                       :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2025/07/02 15:32:53 by michel            #+#    #+#             */
+/*   Updated: 2025/07/02 15:56:44 by mm-furi          ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
+#include "phylosopher_bonus.h"
+
+int	check_argc(int ac, char **av)
+{
+	if (ac < 5 || ac > 6)
+	{
+		fprintf(
+			stderr,
+			"Usage: %s nb_philo time_to_die time_to_eat "
+			"time_to_sleep [meals_required]\n",
+			av[0]);
+		return (-1);
+	}
+	return (0);
+}
+
+int	parse_args(t_data2 *data, int ac, char **av)
+{
+	data->args.nb_philo = ft_atoi(av[1]);
+	data->args.time_to_die = ft_atoi(av[2]);
+	data->args.time_to_eat = ft_atoi(av[3]);
+	data->args.time_to_sleep = ft_atoi(av[4]);
+	if (ac == 6)
+		data->args.meals_required = ft_atoi(av[5]);
+	else
+		data->args.meals_required = -1;
+	if (data->args.nb_philo <= 0 || data->args.time_to_die < 0
+		|| data->args.time_to_eat < 0 || data->args.time_to_sleep < 0
+		|| (ac == 6 && data->args.meals_required < 0))
+	{
+		fprintf(stderr, "Error: invalid argument(s)\n");
+		return (-1);
+	}
+	return (0);
+}
+
+int	setup_resources(t_data2 *data, pid_t **pids)
+{
+	*pids = malloc(sizeof(pid_t) * data->args.nb_philo);
+	if (!*pids)
+	{
+		perror("malloc");
+		return (-1);
+	}
+	data->pids = *pids;
+	open_semaphores(data, data->args.nb_philo);
+	return (0);
+}
+
+void	kill_all(pid_t *pids, int n)
+{
+	int	i;
+
+	i = 0;
+	while (i < n)
+	{
+		kill(pids[i], SIGKILL);
+		i++;
+	}
+}
+
+void	wait_all(pid_t *pids, int n)
+{
+	int	i;
+
+	i = 0;
+	while (i < n)
+	{
+		waitpid(pids[i], NULL, 0);
+		i++;
+	}
+}
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
 /*   phylosopher_bonus.h                                :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 18:58:39 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 17:51:35 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:55:39 by mm-furi          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -385,5 +455,9 @@ void		drop_forks(t_data2 *data);
 void		take_forks(t_data2 *data);
 void		routine_philo(t_data2 *data, int id);
 void		*death_monitor(void *arg);
-
+int			check_argc(int ac, char **av);
+int			parse_args(t_data2 *data, int ac, char **av);
+int			setup_resources(t_data2 *data, pid_t **pids);
+void		kill_all(pid_t *pids, int n);
+void		wait_all(pid_t *pids, int n);
 #endif
