@@ -3,46 +3,26 @@
 /*                                                        :::      ::::::::   */
 /*   main.c                                             :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:10:02 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/07/02 15:16:50 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 15:40:56 by michel           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "phylosopher_bonus.h"
 
-int	init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
+int init_data2(t_data2 *data, pid_t **pids, int ac, char **av)
 {
-	int	argc_ok;
+    if (check_argc(ac, av) < 0)
+        return (EXIT_FAILURE);
+    if (parse_args(data, ac, av) < 0)
+        return (EXIT_FAILURE);
+    if (setup_resources(data, pids) < 0)
+        return (EXIT_FAILURE);
 
-	if (ac < 5 || ac > 6)
-	{
-		fprintf(
-			stderr,
-			"Usage: %s nb_philo time_to_die time_to_eat "
-			"time_to_sleep [meals_required]",
-			av[0]);
-		return (EXIT_FAILURE);
-	}
-	argc_ok = (ac >= 5 && ac <= 6);
-	if (!argc_ok)
-		return (EXIT_FAILURE);
-	data->args.nb_philo = ft_atoi(av[1]);
-	data->args.time_to_die = ft_atoi(av[2]);
-	data->args.time_to_eat = ft_atoi(av[3]);
-	data->args.time_to_sleep = ft_atoi(av[4]);
-	if (ac == 6)
-		data->args.meals_required = ft_atoi(av[5]);
-	else
-		data->args.meals_required = -1;
-	*pids = malloc(sizeof(pid_t) * data->args.nb_philo);
-	data->pids = *pids;
-	if (!*pids)
-		return (EXIT_FAILURE);
-	open_semaphores(data, data->args.nb_philo);
-	data->start_time = get_timestamp();
-	return (EXIT_SUCCESS);
+    data->start_time = get_timestamp();
+    return (EXIT_SUCCESS);
 }
 
 void	spawn_philo(t_data2 *data, pid_t *pids)
@@ -59,6 +39,33 @@ void	spawn_philo(t_data2 *data, pid_t *pids)
 			routine_philo(data, i + 1);
 		i++;
 	}
+}
+
+static int	wait_for_children(t_data2 *data)
+{
+	int		status;
+	int		finished;
+	pid_t	pid;
+
+	finished = 0;
+	pid = waitpid(-1, &status, 0);
+	while (pid > 0)
+	{
+		if (WIFEXITED(status) == 0)
+			return (0);
+		if (WEXITSTATUS(status) == EXIT_FAILURE)
+			return (1);
+		if (WEXITSTATUS(status) == EXIT_SUCCESS)
+		{
+			finished++;
+			if (finished == data->args.nb_philo)
+				return (2);
+		}
+		else
+			return (0);
+		pid = waitpid(-1, &status, 0);
+	}
+	return (0);
 }
 
 void	cleanup_and_wait(t_data2 *data, pid_t *pids)
