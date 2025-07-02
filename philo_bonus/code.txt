@@ -116,14 +116,15 @@ int	main(int ac, char **av)
 /*                                                        :::      ::::::::   */
 /*   phylosopher.c                                      :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: mm-furi <mm-furi@student.42.fr>            +#+  +:+       +#+        */
+/*   By: michel <michel@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/06/24 19:09:19 by mm-furi           #+#    #+#             */
-/*   Updated: 2025/06/26 18:15:00 by mm-furi          ###   ########.fr       */
+/*   Updated: 2025/07/02 14:10:17 by michel           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "phylosopher_bonus.h"
+#include <unistd.h>
 
 int	eat_and_check(t_data2 *data, int id, long *last_meal, int *meals)
 {
@@ -172,6 +173,10 @@ void	routine_philo(t_data2 *data, int id)
 	pthread_detach(watcher);
 	if (id % 2 == 1)
 		usleep(data->args.time_to_eat * 1000);
+	else
+	{
+		usleep(data->args.time_to_sleep * 1000);
+	}
 	while (1)
 	{
 		take_forks(data);
